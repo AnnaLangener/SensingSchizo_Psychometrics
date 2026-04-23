@@ -314,13 +314,16 @@ reliability_summary_long <- data.frame(
 reliability_summary_long[ , 3:5] <-
   round(reliability_summary_long[ , 3:5], 2)
 
-
-
+rel_cols <- scales::col_numeric(
+  palette = c("#FE4365", "#FC9D9A", "#F9CDAD",
+              "#C8C8A9", "#83AF9B", "#2A363B"),
+  domain = c(0, 1)
+)
 ### Viz of Results ##
 reliability_summary_long %>%
   gt(rowname_col = NULL) %>%
   tab_options(
-    table.width = pct(60),   # full width
+    table.width = pct(80),   # full width
     table.font.size = px(20)
   ) %>%
   
@@ -340,7 +343,7 @@ reliability_summary_long %>%
   data_color(
     columns = GT,
     colors = scales::col_numeric(
-      palette = c("#d73027", "#fee08b", "#1a9850"),
+      palette = rel_cols,
       domain = c(0, 1)
     )
   ) %>%
@@ -349,7 +352,7 @@ reliability_summary_long %>%
   data_color(
     columns = Nezlek,
     colors = scales::col_numeric(
-      palette = c("#d73027", "#fee08b", "#1a9850"),
+      palette =rel_cols,
       domain = c(0, 1)
     )
   ) %>%
@@ -358,7 +361,7 @@ reliability_summary_long %>%
   data_color(
     columns = Omega,
     colors = scales::col_numeric(
-      palette = c("#d73027", "#fee08b", "#1a9850"),
+      palette = rel_cols,
       domain = c(0, 1)
     )
   ) %>%

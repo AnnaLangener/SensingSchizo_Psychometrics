@@ -265,3 +265,333 @@ colnames(combined_df_all)
 
 
 write.csv(combined_df_all,"/Users/f007qrc/Library/CloudStorage/GoogleDrive-anna.m.langener@dartmouth.edu/My Drive/Darmouth Drive/9_PsychometricSensing/esm_cleaned.csv" )
+
+
+####### Descriptives ######
+
+read.csv("/Users/f007qrc/Library/CloudStorage/GoogleDrive-anna.m.langener@dartmouth.edu/My Drive/Darmouth Drive/9_PsychometricSensing/esm_cleaned.csv" )
+
+
+# ============================================================
+# Publication-ready descriptives for EMA symptom domains
+# ============================================================
+
+library(dplyr)
+library(tidyr)
+library(psych)
+library(lme4)
+library(performance)
+library(Hmisc)
+library(dplyr)
+library(gt)
+library(gtExtras)
+library(lme4)
+library(purrr)
+library(tidyr)
+
+# -----------------------------
+# 1. Keep only target domains
+# -----------------------------
+target_domains <- c("Positive symptom", "Negative symptom", "Cognitive symptom")
+
+# ============================================================
+# 2. ITEM-LEVEL DESCRIPTIVES
+# Mean, SD, N, min, max per item
+# ============================================================
+
+
+get_icc <- function(df, outcome) {
+  df <- df %>%
+    filter(!is.na(.data[[outcome]])) %>%
+    filter(!is.na(participant_id))
+  
+  if (nrow(df) == 0 || dplyr::n_distinct(df$participant_id) < 2) {
+    return(NA_real_)
+  }
+  
+  fit <- tryCatch(
+    lmer(
+      stats::as.formula(paste0(outcome, " ~ 1 + (1 | participant_id)")),
+      data = df,
+      REML = TRUE
+    ),
+    error = function(e) NULL
+  )
+  
+  if (is.null(fit)) {
+    return(NA_real_)
+  }
+  
+  vc <- as.data.frame(VarCorr(fit))
+  var_between <- vc$vcov[vc$grp == "participant_id"]
+  var_within <- vc$vcov[vc$grp == "Residual"]
+  
+  if (length(var_between) == 0 || length(var_within) == 0) {
+    return(NA_real_)
+  }
+  
+  var_between / (var_between + var_within)
+}
+
+#---------------------------
+# Item ICCs from raw repeated item responses
+#---------------------------
+item_icc <- ema_symptoms %>%
+  filter(!is.na(response)) %>%
+  group_by(ema_category, item_label) %>%
+  nest() %>%
+  mutate(
+    icc = map_dbl(data, ~ get_icc(.x, "response"))
+  ) %>%
+  select(-data)
+
+#---------------------------
+# Item-level rows
+#---------------------------
+item_rows <- ema_symptoms %>%
+  filter(!is.na(response)) %>%
+  group_by(ema_category, item_label, participant_id) %>%
+  summarise(
+    person_value = mean(response, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  group_by(ema_category, item_label) %>%
+  summarise(
+    mean = mean(person_value, na.rm = TRUE),
+    sd = sd(person_value, na.rm = TRUE),
+    # median = median(person_value, na.rm = TRUE),
+    # min = min(person_value, na.rm = TRUE),
+    # max = max(person_value, na.rm = TRUE),
+    values = list(person_value),
+    row_type = "Item",
+    .groups = "drop"
+  ) %>%
+  left_join(item_icc, by = c("ema_category", "item_label"))
+
+#---------------------------
+# Occasion-level scale scores
+# First average items within EMA occasion
+#---------------------------
+scale_occasions <- ema_symptoms %>%
+  filter(!is.na(response)) %>%
+  group_by(ema_category, participant_id, time_index) %>%
+  summarise(
+    scale_at_assessment = mean(response, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+#---------------------------
+# Scale ICCs from raw repeated occasion-level scale scores
+#---------------------------
+scale_icc <- scale_occasions %>%
+  group_by(ema_category) %>%
+  nest() %>%
+  mutate(
+    icc = map_dbl(data, ~ get_icc(.x, "scale_at_assessment"))
+  ) %>%
+  select(-data)
+
+#---------------------------
+# Scale-level rows
+# Then average occasion-level scale scores across time per participant
+#---------------------------
+scale_rows <- scale_occasions %>%
+  group_by(ema_category, participant_id) %>%
+  summarise(
+    person_value = mean(scale_at_assessment, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  group_by(ema_category) %>%
+  summarise(
+    mean = mean(person_value, na.rm = TRUE),
+    sd = sd(person_value, na.rm = TRUE),
+    # median = median(person_value, na.rm = TRUE),
+    # min = min(person_value, na.rm = TRUE),
+    # max = max(person_value, na.rm = TRUE),
+    values = list(person_value),
+    row_type = "Scale",
+    .groups = "drop"
+  ) %>%
+  left_join(scale_icc, by = "ema_category") %>%
+  mutate(item_label = "Scale mean") %>%
+  select(ema_category, item_label, mean, sd, icc, values, row_type)
+
+#---------------------------
+# Combine and format
+#---------------------------
+descriptives_tbl <- bind_rows(item_rows, scale_rows) %>%
+  mutate(
+    row_type = factor(row_type, levels = c("Item", "Scale"))
+  ) %>%
+  arrange(ema_category, row_type, item_label) %>%
+  gt(groupname_col = "ema_category") %>%
+  fmt_number(
+    columns = c(mean, sd, icc),
+    decimals = 2
+  ) %>%
+  gt_plt_dist(column = values) %>%
+  cols_label(
+    item_label = "Item / Scale",
+    mean = "Mean",
+    sd = "SD",
+    # median = "Median",
+    # min = "Min",
+    # max = "Max",
+    icc = "ICC",
+    values = "Distribution",
+    row_type = "Type"
+  ) %>%
+  cols_move_to_start(columns = c(row_type, item_label)) %>%
+  tab_footnote(
+    footnote = paste(
+      "Item rows summarize participant-level mean item scores.",
+      "For each participant, responses were first averaged across all available observations for a given item within an EMA category.",
+      "The table then reports the mean, SD, median, minimum, and maximum of those participant-level item means across participants.",
+      "The distribution graphic for item rows displays the distribution of these participant-level item means.",
+      "ICC for item rows was estimated from raw repeated item responses using a random-intercept model with observations nested within participants."
+    ),
+    locations = cells_column_labels(columns = c(item_label, mean, sd, icc, values))
+  ) %>%
+  tab_footnote(
+    footnote = paste(
+      "Scale rows summarize participant-level mean scale scores within each EMA category.",
+      "For each participant and EMA occasion, item responses belonging to that category were first averaged to create an occasion-level scale score.",
+      "These occasion-level scale scores were then averaged across time within participant.",
+      "The table then reports the mean, SD, median, minimum, and maximum of those participant-level scale means across participants.",
+      "The distribution graphic for scale rows displays the distribution of these participant-level scale means.",
+      "ICC for scale rows was estimated from raw repeated occasion-level scale scores using a random-intercept model with observations nested within participants."
+    ),
+    locations = cells_body(
+      columns = item_label,
+      rows = row_type == "Scale"
+    )
+  ) %>%
+  tab_source_note(
+    source_note = paste(
+      "Note. Descriptive statistics are based on participant-level averages.",
+      "Item rows use each participant's mean score for a given item.",
+      "Scale rows use each participant's mean of occasion-level category scores, where category scores are computed by averaging all available items within category at each EMA occasion and then averaging those scores across occasions.",
+      "ICC is the proportion of total variance attributable to between-person differences.",
+      "Higher values indicate higher endorsement of the underlying item or scale content."
+    )
+  )
+
+descriptives_tbl
+
+
+
+#### Interitem Correlation
+
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(tibble)
+
+item_key <- tibble(
+  questionText = c(
+    "In the past 4 hours, I would rather have been doing something else.",
+    "In the past 4 hours, I have felt unmotivated.",
+    "In the past 4 hours, I have felt emotionally flat, numb, or blank.",
+    "In the past 4 hours, I have experienced difficulty expressing my emotions or thoughts.",
+    "In the past 4 hours, I have not wanted to socialize.",
+    "In the past 4 hours, to what degree have you had any unusual experiences?",
+    "In the past 4 hours, I have felt detached from reality.",
+    "In the past 4 hours, I have felt I possess special powers or abilities.",
+    "In the past 4 hours, I have felt I am receiving special messages.",
+    "In the past 4 hours, I have felt suspicious of others.",
+    "In the past 4 hours, I have found it easy to concentrate.",
+    "In the past 4 hours, I have experienced racing thoughts.",
+    "In the past 4 hours, I have found it easy to make decisions.",
+    "In the past 4 hours, I have experienced difficulty thinking clearly.",
+    "In the past 4 hours, I have had trouble remembering things."
+  ),
+  item_short = c(
+    "Elsewhere",
+    "Unmotivated",
+    "Flat",
+    "Expression",
+    "Social",
+    "Unusual exp.",
+    "Detached",
+    "Powers",
+    "Messages",
+    "Suspicious",
+    "Concentrate",
+    "Racing",
+    "Decisions",
+    "Clarity",
+    "Memory"
+  )
+)
+
+library(hrbrthemes)
+
+item_means <- ema_symptoms %>%
+  filter(!is.na(response)) %>%
+  group_by(ema_category, participant_id, questionText) %>%
+  summarise(
+    person_mean = mean(response, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  left_join(item_key, by = "questionText")
+
+make_corr_plot <- function(cat_name, df) {
+  
+  wide_df <- df %>%
+    filter(ema_category == cat_name) %>%
+    select(participant_id, item_short, person_mean) %>%
+    tidyr::pivot_wider(names_from = item_short, values_from = person_mean)
+  
+  corr_mat <- wide_df %>%
+    select(-participant_id) %>%
+    cor(use = "pairwise.complete.obs")
+  
+  corr_df <- as.data.frame(as.table(corr_mat)) %>%
+    rename(item_x = Var1, item_y = Var2, r = Freq)
+  
+  ggplot(corr_df, aes(item_x, item_y, fill = r)) +
+    geom_tile(color = "white", linewidth = 0.3) +
+    
+    # ✅ add correlation values
+    geom_text(aes(label = sprintf("%.2f", r)), size = 3) +
+    
+    coord_equal() +
+    scale_fill_gradientn(
+      colours = c("#FE4365", "#FC9D9A", "#F9CDAD",
+                  "#C8C8A9", "#83AF9B"),
+      limits = c(-1, 1),
+      name = "r"
+    ) +
+    labs(title = cat_name, x = NULL, y = NULL) +
+    theme_ipsum(axis_title_size = 14)+
+    theme(
+      plot.title = element_text(size = 12, face = "bold"),
+      panel.grid = element_blank(),
+      axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+}
+
+library(purrr)
+library(patchwork)
+
+plots <- item_means %>%
+  distinct(ema_category) %>%
+  pull(ema_category) %>%
+  map(~ make_corr_plot(.x, item_means))
+
+corr_plot = wrap_plots(plots, ncol = 3) +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "bottom") &
+  plot_annotation(
+    title = "Item Correlation by EMA Category",
+    subtitle = "Correlations computed from participant-level mean item scores",
+  )
+
+ggsave(
+  "inter_item_heatmaps.png",
+  corr_plot,
+  width = 10,
+  height = 7,
+  dpi = 300
+)
