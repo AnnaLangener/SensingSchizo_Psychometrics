@@ -595,3 +595,58 @@ ggsave(
   height = 7,
   dpi = 300
 )
+
+
+
+########## MINI ########
+combined_df_all <- read.csv(
+  "/Users/f007qrc/Library/CloudStorage/GoogleDrive-anna.m.langener@dartmouth.edu/My Drive/Darmouth Drive/9_PsychometricSensing/esm_cleaned.csv",
+  colClasses = c(participant_id = "character")
+)
+
+MINI <- read.csv("/Users/f007qrc/Library/CloudStorage/GoogleDrive-anna.m.langener@dartmouth.edu/My Drive/Darmouth Drive/9_PsychometricSensing/MINI.csv")
+MINI$record_id <- sprintf("%05d", MINI$record_id)
+
+MINI <- MINI[MINI$record_id %in% combined_df_all$participant_id,]
+
+sum(MINI$k_schizophrenia_current) ## CURRENT PSYCHOTIC SYMPTOMS
+sum(MINI$k_r1_schizophrenia_current) ## CURRENT PSYCHOTIC SYMPTOMS without clinicians rating
+
+
+current_id = MINI$k_schizophrenia_current == 1
+
+
+
+
+########## Baseline ########
+combined_df_all <- read.csv(
+  "/Users/f007qrc/Library/CloudStorage/GoogleDrive-anna.m.langener@dartmouth.edu/My Drive/Darmouth Drive/9_PsychometricSensing/esm_cleaned.csv",
+  colClasses = c(participant_id = "character")
+)
+
+baseline <- read.csv("/Users/f007qrc/Library/CloudStorage/GoogleDrive-anna.m.langener@dartmouth.edu/My Drive/Darmouth Drive/9_PsychometricSensing/Baseline.csv")
+baseline$record_id <- sprintf("%05d", baseline$record_id)
+
+unique(combined_df_all$participant_id[!combined_df_all$participant_id %in% baseline$record_id])
+baseline = baseline[baseline$b_timestamp != "[not completed]",]
+baseline = baseline[baseline$b_timestamp != "",]
+
+baseline <- baseline[baseline$record_id %in% combined_df_all$participant_id,]
+
+#dem 4: race
+sum(baseline$dem_4___1) # White
+sum(baseline$dem_4___2)# Black or African American
+sum(baseline$dem_4___3) # American Indian or Alaska Native
+sum(baseline$dem_4___4) # Asian
+sum(baseline$dem_4___5) # Native Hawaiian or Pacific Islander
+sum(baseline$dem_4___6) #Other
+
+
+
+#dem_5: gdem_4___1#dem_5: gender (1: male, 2: female, 3: non binary, 4: other)
+table(baseline$dem_5)
+
+# dem_26: age
+
+describe(baseline$dem_26)
+
