@@ -1,10 +1,11 @@
 ##############################################
 ############ Convergent Validity #############
 ##############################################
-
+library(ggplot2)
 library(dplyr)
 library(tidyr)
 library(readxl)
+library(hrbrthemes)
 
 ####### Load data #######
 #!/usr/bin/env Rscript
@@ -244,7 +245,7 @@ p = plot_grid(a, b, ncol = 2)
 
 
 ggsave(
-  filename = "convergent_validity_plot.png",
+  filename = "convergent_validity_plot.jpg",
   plot = p,
   width = 11,
   height = 5,
@@ -726,7 +727,7 @@ p2 = plot_grid(p1,p, ncol = 1)
 
 
 ggsave(
-  filename = "convergent_validity_overtime.png",
+  filename = "convergent_validity_overtime.jpg",
   plot = p2,
   width = 11.8,
   height = 8,

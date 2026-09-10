@@ -46,7 +46,7 @@ library(lubridate)
 # 
 # 
 # combined_df <- dbReadTable(con, "ema_responses_final3")
-# cache <- dbReadTable(con, "overall_status_cache")
+cache <- dbReadTable(con, "overall_status_cache")
 
 combined_df <- read.csv("/Users/f007qrc/Library/CloudStorage/GoogleDrive-anna.m.langener@dartmouth.edu/My Drive/Darmouth Drive/9_PsychometricSensing/table_new.csv") # downloaded from VM
 cache <- read.csv("/Users/f007qrc/Library/CloudStorage/GoogleDrive-anna.m.langener@dartmouth.edu/My Drive/Darmouth Drive/9_PsychometricSensing/table_overall_new.csv") # downloaded from VM
@@ -368,6 +368,105 @@ item_rows <- ema_symptoms %>%
   ) %>%
   left_join(item_icc, by = c("ema_category", "item_label"))
 
+# SOME VARIABILITY TRY OUTS
+# item_rows <- ema_symptoms %>%
+#   filter(!is.na(response)) %>%
+#   group_by(ema_category, item_label, participant_id) %>%
+#   summarise(
+#     person_value = mean(response, na.rm = TRUE),
+#     person_wp_sd = sd(response, na.rm = TRUE),
+#     n_obs = n(),
+#     .groups = "drop"
+#   ) %>%
+#   group_by(ema_category, item_label) %>%
+#   summarise(
+#     mean = mean(person_value, na.rm = TRUE),
+#     sd = sd(person_value, na.rm = TRUE),              # between-person SD of means
+#     wp_sd_mean = mean(person_wp_sd, na.rm = TRUE),   # average within-person SD
+#     wp_sd_median = median(person_wp_sd, na.rm = TRUE),
+#     
+#     # adjusted within-person SD
+#     adjusted_wp_sd = mean(person_wp_sd, na.rm = TRUE) /
+#       mean(person_value, na.rm = TRUE),
+#     
+#     values = list(person_value),
+#     wp_sd_values = list(person_wp_sd),
+#     row_type = "Item",
+#     .groups = "drop"
+#   ) %>%
+#   left_join(item_icc, by = c("ema_category", "item_label"))
+# 
+# 
+# library(tidyverse)
+# 
+# wp_sd_plot_data <- ema_symptoms %>%
+#   filter(!is.na(response)) %>%
+#   
+#   group_by(ema_category, item_label, participant_id) %>%
+#   summarise(
+#     person_mean = mean(response, na.rm = TRUE),
+#     wp_sd = sd(response, na.rm = TRUE),
+#     .groups = "drop"
+#   ) %>%
+#   
+#   group_by(ema_category, item_label) %>%
+#   mutate(
+#     overall_mean = mean(person_mean, na.rm = TRUE),
+#     
+#     # adjusted within-person SD
+#     adjusted_wp_sd = wp_sd / overall_mean
+#   ) %>%
+#   
+#   ungroup() %>%
+#   filter(!is.na(adjusted_wp_sd))
+# 
+# ggplot(
+#   wp_sd_plot_data,
+#   aes(x = item_label, y = adjusted_wp_sd)
+# ) +
+#   geom_violin(fill = "lightblue", alpha = .5) +
+#   geom_boxplot(width = .15, outlier.alpha = .3) +
+#   facet_wrap(~ ema_category, scales = "free_x") +
+#   labs(
+#     x = "Item",
+#     y = "Adjusted within-person SD",
+#     title = "Distribution of adjusted within-person SDs"
+#   ) +
+#   theme_bw() +
+#   theme(
+#     axis.text.x = element_text(angle = 45, hjust = 1)
+#   )
+# 
+# 
+# # Step 1: Compute participant-level means and SDs for each item
+# wp_data <- ema_symptoms %>%
+#   filter(!is.na(response)) %>%
+#   group_by(ema_category, item_label, participant_id) %>%
+#   summarise(
+#     item_mean = mean(response, na.rm = TRUE),
+#     item_sd = sd(response, na.rm = TRUE),
+#     .groups = "drop"
+#   )
+# 
+# # Step 2: Regress SD on mean and squared mean
+# adjustment_model <- lm(
+#   item_sd ~ item_mean + I(item_mean^2),
+#   data = wp_data
+# )
+# 
+# # Step 3: Save residuals (adjusted within-person SDs)
+# wp_data <- wp_data %>%
+#   mutate(
+#     adjusted_wp_sd = resid(adjustment_model)
+#   )
+# 
+# # Step 4: Average residuals within each scale/category for each participant
+# scale_adjusted_wp_sd <- wp_data %>%
+#   group_by(ema_category, participant_id) %>%
+#   summarise(
+#     adjusted_wp_sd = mean(adjusted_wp_sd, na.rm = TRUE),
+#     .groups = "drop"
+#   )
 #---------------------------
 # Occasion-level scale scores
 # First average items within EMA occasion
