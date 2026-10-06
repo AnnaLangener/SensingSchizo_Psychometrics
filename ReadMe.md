@@ -14,7 +14,6 @@ This repository contains the code that was used for analyses in the paper "Captu
 #### `Participant_EMA_TimeSeries.Rmd`
 
 * Creates one self-contained interactive HTML report with a participant dropdown and four separate charts: three domains showing item traces and all domain means together.
-* Open the R Markdown file in RStudio and choose Knit to HTML. Requires Pandoc, dplyr, and jsonlite; update the YAML data path if needed. Plotly and LaTeX are not required.
 * The output is `Participant_EMA_TimeSeries.html`, beside the R Markdown file. Drag, scroll, or enter a time range to zoom all four charts together; hover over points to inspect scores. Each chart has its own legend. Data and scripts are embedded for offline use. Responses are already scored; missing values are preserved and no smoothing is applied.
 
 #### `Data_Cleaning.R` [Cleaning and Descriptives]
