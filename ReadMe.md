@@ -38,9 +38,6 @@ This repository contains the code that was used for analyses in the paper "Captu
 #### `TraditionalQuestionnaires_Reliability.R` [Traditional questionnaire reliability]
 
 * Estimates weekly PS-R and NSI-PR generalizability coefficients and multilevel omega, and post-assessment NSI-PR and PNS Cronbach alpha in the included sample.
-* Run from the project folder with `source("TraditionalQuestionnaires_Reliability.R")`; update `main_path` if needed.
-* Saves summary CSVs, fitted models and diagnostics, and session information in `traditional_questionnaire_reliability/`.
-* Uses scale-specific complete cases. NSI-PR totals preserve equal domain weighting; inspect model diagnostics before reporting estimates.
 
 
 ---
