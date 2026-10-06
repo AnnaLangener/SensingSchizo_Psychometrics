@@ -11,6 +11,12 @@ This repository contains the code that was used for analyses in the paper "Captu
 
 ### 🔧 Scripts
 
+#### `Participant_EMA_TimeSeries.Rmd`
+
+* Creates one self-contained interactive HTML report with a participant dropdown and four separate charts: three domains showing item traces and all domain means together.
+* Open the R Markdown file in RStudio and choose Knit to HTML. Requires Pandoc, dplyr, and jsonlite; update the YAML data path if needed. Plotly and LaTeX are not required.
+* The output is `Participant_EMA_TimeSeries.html`, beside the R Markdown file. Drag, scroll, or enter a time range to zoom all four charts together; hover over points to inspect scores. Each chart has its own legend. Data and scripts are embedded for offline use. Responses are already scored; missing values are preserved and no smoothing is applied.
+
 #### `Data_Cleaning.R` [Cleaning and Descriptives]
 
 * Imports raw EMA data
@@ -29,6 +35,13 @@ This repository contains the code that was used for analyses in the paper "Captu
 
 #### `PsychometricProperties_Scales.R` [Reliability]
 * reliability analyses
+
+#### `TraditionalQuestionnaires_Reliability.R` [Traditional questionnaire reliability]
+
+* Estimates weekly PS-R and NSI-PR generalizability coefficients and multilevel omega, and post-assessment NSI-PR and PNS Cronbach alpha in the included sample.
+* Run from the project folder with `source("TraditionalQuestionnaires_Reliability.R")`; update `main_path` if needed.
+* Saves summary CSVs, fitted models and diagnostics, and session information in `traditional_questionnaire_reliability/`.
+* Uses scale-specific complete cases. NSI-PR totals preserve equal domain weighting; inspect model diagnostics before reporting estimates.
 
 
 ---
@@ -52,4 +65,3 @@ This repository contains the code that was used for analyses in the paper "Captu
 
 * `des.png`
   → Descriptive statistics visualization
-

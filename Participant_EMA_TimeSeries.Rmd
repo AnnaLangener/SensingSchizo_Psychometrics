@@ -1,0 +1,131 @@
+---
+title: "EMA symptom time series"
+output:
+  html_document:
+    self_contained: true
+    mathjax: null
+    toc: false
+params:
+  data_file: "/Users/anna/Library/CloudStorage/GoogleDrive-langener95@gmail.com/My Drive/Research/9_PsychometricSensing/esm_cleaned.csv"
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(jsonlite)
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+ema <- read.csv(params$data_file, colClasses = c(participant_id = "character"))
+required <- c("participant_id", "ema_category", "questionText", "response", "time_index")
+stopifnot(all(required %in% names(ema)))
+domains <- c("Negative symptom", "Positive symptom", "Cognitive symptom")
+symptoms <- ema %>%
+  filter(ema_category %in% domains, !is.na(participant_id), nzchar(participant_id)) %>%
+  mutate(response = as.numeric(response), time_index = as.integer(time_index))
+if (!nrow(symptoms)) stop("No included participants with symptom data.")
+if (anyNA(symptoms$time_index)) stop("Missing time_index.")
+if (any(symptoms$response < 0 | symptoms$response > 100, na.rm = TRUE))
+  stop("Expected cleaned responses on the 0-100 scale.")
+if (anyDuplicated(symptoms[c("participant_id", "ema_category", "questionText", "time_index")]))
+  stop("Duplicate item responses within an occasion: resolve in cleaned data first.")
+participant_ids <- sort(unique(symptoms$participant_id))
+item_patterns <- c("doing something else" = "Elsewhere", "unmotivated" = "Unmotivated",
+  "flat, numb" = "Flat", "expressing" = "Expression", "socialize" = "Social",
+  "unusual experiences" = "Unusual experiences", "detached" = "Detached",
+  "special powers" = "Powers", "special messages" = "Messages", "suspicious" = "Suspicious",
+  "concentrate" = "Concentration (reversed)", "racing thoughts" = "Racing thoughts",
+  "decisions" = "Decisions (reversed)", "thinking clearly" = "Clarity", "remembering" = "Memory")
+symptoms$item_label <- sub("^In the past 4 hours,\\s*", "", symptoms$questionText)
+for (pattern in names(item_patterns)) {
+  symptoms$item_label[grepl(pattern, symptoms$questionText, fixed = TRUE)] <- item_patterns[[pattern]]
+}
+domain_scores <- symptoms %>% group_by(participant_id, time_index, ema_category) %>%
+  summarise(mean_score = if (all(is.na(response))) NA_real_ else mean(response, na.rm = TRUE),
+            .groups = "drop")
+payload <- list(ids = I(participant_ids),
+  items = symptoms %>% transmute(id = participant_id, domain = ema_category,
+                                 item = item_label, key = questionText, x = time_index, y = response),
+  means = domain_scores %>% transmute(id = participant_id, domain = ema_category,
+                                      item = ema_category, key = ema_category, x = time_index, y = mean_score))
+# Escape '<' so unexpected source text cannot terminate the embedded JSON block.
+embedded_data <- gsub("<", "\\u003c", jsonlite::toJSON(payload, auto_unbox = TRUE,
+                      dataframe = "rows", na = "null", digits = 6), fixed = TRUE)
+```
+
+Select a participant below. The three item panels show whether symptoms move
+together; the fourth shows domain averages. Scores are already reverse-coded
+where required. Means use available items, and missing observations remain gaps.
+The horizontal axis is the original EMA occasion index, not calendar time.
+
+**Zoom:** drag across any chart, scroll over a chart, or enter a start and end
+occasion. The selected range applies to all four charts. Hover over points for
+scores; click a legend entry to hide a trace. Reset restores the full range.
+
+```{r interactive-report, results='asis'}
+cat('<style>
+.main-container{max-width:1400px!important}
+.ema-controls{display:flex;flex-wrap:wrap;gap:12px;align-items:end;padding:16px;background:#f3f5f4;border-radius:8px;margin:18px 0}
+.ema-controls label{display:flex;flex-direction:column;gap:5px;font-size:13px}
+.ema-controls select,.ema-controls input,.ema-controls button{font:inherit;padding:7px;border:1px solid #bdc8c3;border-radius:4px;background:white}
+.ema-controls input{width:105px}.ema-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.ema-card{border:1px solid #dce2df;border-radius:8px;padding:14px;min-width:0;background:white}
+.ema-card h3{font-size:17px;margin:0 0 10px}.ema-chart{display:block;width:100%;height:auto;touch-action:none;user-select:none}
+.ema-legend{display:flex;flex-wrap:wrap;gap:7px 12px;min-height:45px;margin-top:10px}
+.ema-legend button{font-size:12px;border:0;background:transparent;padding:3px;cursor:pointer;text-align:left}
+.ema-status{margin:8px 0 15px;color:#4b5b54}
+@media(max-width:900px){.ema-grid{grid-template-columns:1fr}}
+</style>
+<div id="ema-report">
+<div class="ema-controls">
+<label>Participant<select id="ema-id"></select></label>
+<label>Start occasion<input id="ema-start" type="number" step="1"></label>
+<label>End occasion<input id="ema-end" type="number" step="1"></label>
+<button id="ema-apply" type="button">Apply range</button><button id="ema-reset" type="button">Reset zoom</button>
+</div><p id="ema-status" class="ema-status" aria-live="polite"></p><div id="ema-panels" class="ema-grid"></div>
+</div><script type="application/json" id="ema-data">', embedded_data, '</script>\n')
+cat(r"---(<script>
+(function(){
+'use strict';
+const data=JSON.parse(document.getElementById('ema-data').textContent);
+const selector=document.getElementById('ema-id'), start=document.getElementById('ema-start'), end=document.getElementById('ema-end'), status=document.getElementById('ema-status'), container=document.getElementById('ema-panels');
+const domains=['Negative symptom','Positive symptom','Cognitive symptom'];
+const itemColours=['#FE4365','#FC9D9A','#F9CDAD','#83AF9B','#2A363B'];
+const domainColours={'Negative symptom':'#83AF9B','Positive symptom':'#FC9D9A','Cognitive symptom':'#C8C8A9'};
+const ns='http://www.w3.org/2000/svg';
+let participant, items, means, low, high, fullLow, fullHigh, hidden=new Set();
+for(const id of data.ids){const o=document.createElement('option');o.value=id;o.textContent=id;selector.appendChild(o);}
+function svgNode(tag,attrs,text){const el=document.createElementNS(ns,tag);for(const [k,v] of Object.entries(attrs||{}))el.setAttribute(k,v);if(text!==undefined)el.textContent=text;return el;}
+function setRange(a,b){a=Math.max(fullLow,Math.min(fullHigh,a));b=Math.max(fullLow,Math.min(fullHigh,b));if(!Number.isFinite(a)||!Number.isFinite(b)||b-a<0.5){status.textContent='Choose an end occasion greater than the start.';return;}low=a;high=b;draw();}
+function choose(){participant=selector.value;items=data.items.filter(r=>r.id===participant);means=data.means.filter(r=>r.id===participant);fullLow=Math.min(...items.map(r=>r.x));fullHigh=Math.max(...items.map(r=>r.x));if(fullLow===fullHigh){fullLow-=0.5;fullHigh+=0.5;}low=fullLow;high=fullHigh;hidden=new Set();draw();}
+function draw(){start.value=Number(low.toFixed(2));end.value=Number(high.toFixed(2));status.textContent='Participant '+participant+' | Occasions '+low.toFixed(1)+' to '+high.toFixed(1)+' | '+data.ids.length+' included participants';container.replaceChildren();domains.forEach(d=>card(d,items.filter(r=>r.domain===d),false));card('Domain averages',means,true);}
+function card(title,rows,isMean){
+ const box=document.createElement('section');box.className='ema-card';const h=document.createElement('h3');h.textContent=title;box.appendChild(h);
+ const W=650,H=315,L=52,R=18,T=12,B=44,pw=W-L-R,ph=H-T-B;
+ const x=v=>L+(v-low)/(high-low)*pw,y=v=>T+(100-v)/100*ph;
+ const svg=svgNode('svg',{viewBox:'0 0 '+W+' '+H,class:'ema-chart',role:'img','aria-label':title+' for participant '+participant});box.appendChild(svg);
+ for(let v=0;v<=100;v+=20){svg.appendChild(svgNode('line',{x1:L,x2:W-R,y1:y(v),y2:y(v),stroke:'#e6ebe8'}));svg.appendChild(svgNode('text',{x:L-8,y:y(v)+4,'text-anchor':'end','font-size':11,fill:'#59655f'},String(v)));}
+ for(let i=0;i<=5;i++){const v=low+(high-low)*i/5;svg.appendChild(svgNode('text',{x:x(v),y:H-B+20,'text-anchor':'middle','font-size':11,fill:'#59655f'},Number(v.toFixed(1))));}
+ svg.appendChild(svgNode('text',{x:L+pw/2,y:H-5,'text-anchor':'middle','font-size':12},'EMA occasion'));
+ svg.appendChild(svgNode('text',{transform:'translate(13 '+(T+ph/2)+') rotate(-90)','text-anchor':'middle','font-size':12},isMean?'Mean score':'Item response'));
+ const labels=[...new Set(rows.map(r=>r.key))].sort();const legend=document.createElement('div');legend.className='ema-legend';
+ for(const [index,key] of labels.entries()){
+  const trace=rows.filter(r=>r.key===key).sort((a,b)=>a.x-b.x), name=trace[0].item, colour=isMean?domainColours[name]:itemColours[index%itemColours.length], token=title+'|'+key;
+  const button=document.createElement('button');button.type='button';button.textContent='━ '+name;button.style.color=colour;button.style.opacity=hidden.has(token)?'.35':'1';button.setAttribute('aria-pressed',String(!hidden.has(token)));button.onclick=()=>{hidden.has(token)?hidden.delete(token):hidden.add(token);draw();};legend.appendChild(button);
+  if(hidden.has(token))continue;
+  let path='',previous=null;
+  for(const r of trace){if(r.y===null||r.x<low||r.x>high){previous=null;continue;}const move=previous===null||r.x-previous.x!==1;path+=(move?'M':'L')+x(r.x)+' '+y(r.y)+' ';previous=r;}
+  svg.appendChild(svgNode('path',{d:path,fill:'none',stroke:colour,'stroke-width':1.6}));
+  for(const r of trace){if(r.y===null||r.x<low||r.x>high)continue;const dot=svgNode('circle',{cx:x(r.x),cy:y(r.y),r:2.8,fill:colour});dot.appendChild(svgNode('title',{},name+' | EMA '+r.x+' | Score '+r.y.toFixed(2)));svg.appendChild(dot);}
+ }
+ if(!rows.length)svg.appendChild(svgNode('text',{x:W/2,y:H/2,'text-anchor':'middle'},'No observations for this domain'));
+ const brush=svgNode('rect',{x:L,y:T,width:0,height:ph,fill:'#83AF9B','fill-opacity':'.2','pointer-events':'none'});svg.appendChild(brush);
+ const position=e=>Math.max(L,Math.min(W-R,(e.clientX-svg.getBoundingClientRect().left)/svg.getBoundingClientRect().width*W));let drag=null;
+ svg.addEventListener('pointerdown',e=>{if(e.button!==0)return;drag={x:position(e),low,high};svg.setPointerCapture(e.pointerId);});
+ svg.addEventListener('pointermove',e=>{if(!drag)return;const p=position(e);brush.setAttribute('x',Math.min(p,drag.x));brush.setAttribute('width',Math.abs(p-drag.x));});
+ svg.addEventListener('pointerup',e=>{if(!drag)return;const p=position(e),d=drag;drag=null;brush.setAttribute('width',0);if(Math.abs(p-d.x)>8)setRange(d.low+(Math.min(p,d.x)-L)/pw*(d.high-d.low),d.low+(Math.max(p,d.x)-L)/pw*(d.high-d.low));});
+ svg.addEventListener('pointercancel',()=>{drag=null;brush.setAttribute('width',0);});
+ svg.addEventListener('wheel',e=>{e.preventDefault();const f=(position(e)-L)/pw,center=low+f*(high-low),span=Math.min(fullHigh-fullLow,Math.max(1,(high-low)*(e.deltaY>0?1.25:.8)));let a=center-f*span,b=center+(1-f)*span;if(a<fullLow){b+=fullLow-a;a=fullLow;}if(b>fullHigh){a-=b-fullHigh;b=fullHigh;}setRange(a,b);},{passive:false});
+ svg.addEventListener('dblclick',()=>setRange(fullLow,fullHigh));box.appendChild(legend);container.appendChild(box);
+}
+selector.addEventListener('change',choose);document.getElementById('ema-apply').onclick=()=>setRange(Number(start.value),Number(end.value));document.getElementById('ema-reset').onclick=()=>setRange(fullLow,fullHigh);choose();
+})();
+</script>)---")
+```
