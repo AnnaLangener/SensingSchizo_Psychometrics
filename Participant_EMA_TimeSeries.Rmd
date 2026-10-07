@@ -76,6 +76,8 @@ cat('<style>
 <div id="ema-report">
 <div class="ema-controls">
 <label>Participant<select id="ema-id"></select></label>
+<button id="ema-prev" type="button">Previous participant</button>
+<button id="ema-next" type="button">Next participant</button>
 <label>Start occasion<input id="ema-start" type="number" step="1"></label>
 <label>End occasion<input id="ema-end" type="number" step="1"></label>
 <button id="ema-apply" type="button">Apply range</button><button id="ema-reset" type="button">Reset zoom</button>
@@ -93,16 +95,16 @@ const ns='http://www.w3.org/2000/svg';
 let participant, items, means, low, high, fullLow, fullHigh, hidden=new Set();
 for(const id of data.ids){const o=document.createElement('option');o.value=id;o.textContent=id;selector.appendChild(o);}
 function svgNode(tag,attrs,text){const el=document.createElementNS(ns,tag);for(const [k,v] of Object.entries(attrs||{}))el.setAttribute(k,v);if(text!==undefined)el.textContent=text;return el;}
-function setRange(a,b){a=Math.max(fullLow,Math.min(fullHigh,a));b=Math.max(fullLow,Math.min(fullHigh,b));if(!Number.isFinite(a)||!Number.isFinite(b)||b-a<0.5){status.textContent='Choose an end occasion greater than the start.';return;}low=a;high=b;draw();}
-function choose(){participant=selector.value;items=data.items.filter(r=>r.id===participant);means=data.means.filter(r=>r.id===participant);fullLow=Math.min(...items.map(r=>r.x));fullHigh=Math.max(...items.map(r=>r.x));if(fullLow===fullHigh){fullLow-=0.5;fullHigh+=0.5;}low=fullLow;high=fullHigh;hidden=new Set();draw();}
-function draw(){start.value=Number(low.toFixed(2));end.value=Number(high.toFixed(2));status.textContent='Participant '+participant+' | Occasions '+low.toFixed(1)+' to '+high.toFixed(1)+' | '+data.ids.length+' included participants';container.replaceChildren();domains.forEach(d=>card(d,items.filter(r=>r.domain===d),false));card('Domain averages',means,true);}
+function setRange(a,b){a=Math.max(fullLow,Math.min(fullHigh,Math.round(a)));b=Math.max(fullLow,Math.min(fullHigh,Math.round(b)));if(!Number.isFinite(a)||!Number.isFinite(b)||b-a<1){status.textContent='Choose an end occasion greater than the start.';return;}low=a;high=b;draw();}
+function choose(){participant=selector.value;items=data.items.filter(r=>r.id===participant);means=data.means.filter(r=>r.id===participant);fullLow=Math.min(...items.map(r=>r.x));fullHigh=Math.max(...items.map(r=>r.x));if(fullLow===fullHigh){fullHigh+=1;}low=fullLow;high=fullHigh;hidden=new Set();draw();}
+function draw(){start.value=low;end.value=high;start.min=end.min=fullLow;start.max=end.max=fullHigh;const index=data.ids.indexOf(participant);document.getElementById('ema-prev').disabled=index===0;document.getElementById('ema-next').disabled=index===data.ids.length-1;status.textContent='Participant '+participant+' ('+(index+1)+' of '+data.ids.length+') | Occasions '+low+' to '+high;container.replaceChildren();domains.forEach(d=>card(d,items.filter(r=>r.domain===d),false));card('Domain averages',means,true);}
 function card(title,rows,isMean){
  const box=document.createElement('section');box.className='ema-card';const h=document.createElement('h3');h.textContent=title;box.appendChild(h);
  const W=650,H=315,L=52,R=18,T=12,B=44,pw=W-L-R,ph=H-T-B;
  const x=v=>L+(v-low)/(high-low)*pw,y=v=>T+(100-v)/100*ph;
  const svg=svgNode('svg',{viewBox:'0 0 '+W+' '+H,class:'ema-chart',role:'img','aria-label':title+' for participant '+participant});box.appendChild(svg);
  for(let v=0;v<=100;v+=20){svg.appendChild(svgNode('line',{x1:L,x2:W-R,y1:y(v),y2:y(v),stroke:'#e6ebe8'}));svg.appendChild(svgNode('text',{x:L-8,y:y(v)+4,'text-anchor':'end','font-size':11,fill:'#59655f'},String(v)));}
- for(let i=0;i<=5;i++){const v=low+(high-low)*i/5;svg.appendChild(svgNode('text',{x:x(v),y:H-B+20,'text-anchor':'middle','font-size':11,fill:'#59655f'},Number(v.toFixed(1))));}
+ const ticks=[...new Set(Array.from({length:6},(_,i)=>Math.round(low+(high-low)*i/5)))];for(const v of ticks){svg.appendChild(svgNode('text',{x:x(v),y:H-B+20,'text-anchor':'middle','font-size':11,fill:'#59655f'},String(v)));}
  svg.appendChild(svgNode('text',{x:L+pw/2,y:H-5,'text-anchor':'middle','font-size':12},'EMA occasion'));
  svg.appendChild(svgNode('text',{transform:'translate(13 '+(T+ph/2)+') rotate(-90)','text-anchor':'middle','font-size':12},isMean?'Mean score':'Item response'));
  const labels=[...new Set(rows.map(r=>r.key))].sort();const legend=document.createElement('div');legend.className='ema-legend';
@@ -125,6 +127,8 @@ function card(title,rows,isMean){
  svg.addEventListener('wheel',e=>{e.preventDefault();const f=(position(e)-L)/pw,center=low+f*(high-low),span=Math.min(fullHigh-fullLow,Math.max(1,(high-low)*(e.deltaY>0?1.25:.8)));let a=center-f*span,b=center+(1-f)*span;if(a<fullLow){b+=fullLow-a;a=fullLow;}if(b>fullHigh){a-=b-fullHigh;b=fullHigh;}setRange(a,b);},{passive:false});
  svg.addEventListener('dblclick',()=>setRange(fullLow,fullHigh));box.appendChild(legend);container.appendChild(box);
 }
+function moveParticipant(step){const index=data.ids.indexOf(participant)+step;if(index>=0&&index<data.ids.length){selector.value=data.ids[index];choose();}}
+document.getElementById('ema-prev').onclick=()=>moveParticipant(-1);document.getElementById('ema-next').onclick=()=>moveParticipant(1);
 selector.addEventListener('change',choose);document.getElementById('ema-apply').onclick=()=>setRange(Number(start.value),Number(end.value));document.getElementById('ema-reset').onclick=()=>setRange(fullLow,fullHigh);choose();
 })();
 </script>)---")
